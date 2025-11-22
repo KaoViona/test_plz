@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cat Face ID — Multi Cat</title>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="/static/normalize.css">
+  <link rel="stylesheet" href="/static/style.css">
+
+  <style>
+    /* 登入/註冊 UI */
+    #loginModal {
+      display: none;
+      justify-content: center;
+      align-items: center;
+      position: fixed; top:0; left:0; width:100%; height:100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 10000;
+    }
+    #loginBox {
+      background:#e6dfba; padding:20px; border-radius:8px;
+      width:320px; font-family:'Microsoft JhengHei', sans-serif;
+      text-align:center; color:#5f4f00;
+    }
+    #loginBox input { width:90%; margin:8px 0; padding:6px; }
+    #loginBox button { padding:6px 12px; margin-top:8px; cursor:pointer; }
+
+    /* 導覽列右側帳號顯示 */
+    #navAuth {
+      float: right;
+      margin-right: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    #navAuth button {
+      cursor: pointer;
+      padding: 4px 10px;
+      border: none;
+      border-radius: 4px;
+      background-color: #e6dfba;
+      color: #5f4f00;
+    }
+    #userEmailDisplay {
+      color: white; 
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- 貓爪游標 -->
+  <img id="cat-cursor" src="/static/more_img/cat_hand.png" alt="cat paw" style="
+    position: fixed;
+    width: 50px;
+    height: 50px;
+    pointer-events: none;
+    z-index: 100000;
+  ">
+  
+  <script>
+    const catCursor = document.getElementById('cat-cursor');
+    document.addEventListener('mousemove', e => {
+      catCursor.style.left = (e.clientX - 25) + 'px';
+      catCursor.style.top  = (e.clientY - 25) + 'px';
+    });
+  </script>
+
+  <header>
+    <h1>喵喵株式會社</h1>
+    <nav>
+      <p><a href="/static/aboutus.html">關於我們</a></p>
+      <p><a href="/static/index.html">員工辨識</a></p>
+      <p><a href="/static/aboutsystem.html">系統介紹</a></p>
+      <div id="navAuth">
+        <span id="userEmailDisplay"></span>
+        <button id="btnNavLogin">登入/註冊</button>
+        <button id="btnLogout" style="display:none;">登出</button>
+      </div>
+    </nav>
+  </header>
+
+  <div class="wrap">
+    <h1>員工辨識</h1>
+    <div class="cam-box">
+      <video id="preview" playsinline autoplay muted></video>
+      <canvas id="overlay" class="overlay"></canvas>
+    </div>
+    <div class="btns">
+      <button id="btnStart">啟動相機</button>
+      <button id="btnShot">進行辨識</button>
+    </div>
+    <div class="foot">
+      <div class="msg" id="status">狀態：待機</div>
+      <div class="known hidden">已知貓：<span id="knownCats" class="small">載入中…</span></div>
+    </div>
+  </div>
+
+  <!-- 登入 Modal -->
+  <div id="loginModal">
+    <div id="loginBox">
+      <h3>登入 / 註冊</h3>
+      <input type="email" id="email" placeholder="Email">
+      <input type="password" id="password" placeholder="密碼">
+      <input type="text" id="name" placeholder="姓名">
+      <div>
+        <button id="btnLogin">登入</button>
+        <button id="btnRegister">註冊</button>
+      </div>
+      <p id="loginMsg"></p>
+    </div>
+  </div>
+
+  <!-- 初始化與功能 JS -->
+  <script>
+  window.addEventListener('load', function() {
+    // 確保 firebase 已定義
+    if (typeof firebase === "undefined") {
+      console.error("Firebase SDK 未載入");
+      return;
+    }
+
+    // ===================== Firebase 初始化 =====================
+    const firebaseConfig = {
+      apiKey: "AIzaSyDuyFKEHdTz4i57A9NuYycAHIefwzvSBSY",
+      authDomain: "catfaceid.firebaseapp.com",
+      projectId: "catfaceid",
+      storageBucket: "catfaceid.firebasestorage.app",
+      messagingSenderId: "908372181412",
+      appId: "1:908372181412:web:111267cf71a6372e940131",
+      measurementId: "G-YJQ34QJP70"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+
+    const loginModal = document.getElementById('loginModal');
+    const loginMsg = document.getElementById('loginMsg');
+    const userEmailDisplay = document.getElementById('userEmailDisplay');
+    const btnNavLogin = document.getElementById('btnNavLogin');
+    const btnLogout = document.getElementById('btnLogout');
+
+    function showLogin(){ loginModal.style.display = 'flex'; }
+    function hideLogin(){ loginModal.style.display = 'none'; }
+
+    btnNavLogin.addEventListener('click', showLogin);
+
+    document.getElementById('btnRegister').addEventListener('click', async () => {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const name = document.getElementById('name').value;
+      try {
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        loginMsg.textContent = "註冊成功";
+        hideLogin();
+        await sendUserInfoToBackend(userCredential.user, name);
+      } catch(e) { 
+        loginMsg.textContent = e.code === "auth/email-already-in-use" ? "帳號已存在" : e.message;
+      }
+    });
+
+    document.getElementById('btnLogin').addEventListener('click', async () => {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const name = document.getElementById('name').value;
+      try {
+        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        loginMsg.textContent = "登入成功";
+        hideLogin();
+        await sendUserInfoToBackend(userCredential.user, name);
+      } catch(e) { 
+        if(e.code === "auth/user-not-found") loginMsg.textContent = "還未註冊";
+        else if(e.code === "auth/invalid-email") loginMsg.textContent = "Email 格式錯誤";
+        else loginMsg.textContent = e.message;
+      }
+    });
+
+    btnLogout.addEventListener('click', async () => {
+      await auth.signOut();
+    });
+
+    auth.onAuthStateChanged(async user => {
+      if(user){
+        userEmailDisplay.textContent = user.email;
+        btnNavLogin.style.display = 'none';
+        btnLogout.style.display = 'inline-block';
+      } else {
+        userEmailDisplay.textContent = '';
+        btnNavLogin.style.display = 'inline-block';
+        btnLogout.style.display = 'none';
+      }
+    });
+
+    async function sendUserInfoToBackend(user, name) {
+      const token = await user.getIdToken();
+      await fetch('http://127.0.0.1:8000/register_or_login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify({name})
+      });
+    }
+
+    // ===================== 相機辨識程式碼 =====================
+    const video = document.getElementById('preview');
+    const overlay = document.getElementById('overlay');
+    const ctx = overlay.getContext('2d');
+    const statusEl = document.getElementById('status');
+    const btnStart = document.getElementById('btnStart');
+    const btnShot  = document.getElementById('btnShot');
+
+    let currentStream = null;
+    let toJpegQuality = 0.9;
+
+    function setStatus(s){ statusEl.textContent = '狀態：' + s; }
+    function clearOverlay(){ ctx.clearRect(0,0,overlay.width,overlay.height); }
+
+    function resizeOverlay() {
+      const rect = video.getBoundingClientRect();
+      overlay.width = rect.width * devicePixelRatio;
+      overlay.height = rect.height * devicePixelRatio;
+      overlay.style.width = rect.width + 'px';
+      overlay.style.height = rect.height + 'px';
+      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+      clearOverlay();
+    }
+    window.addEventListener('resize', resizeOverlay);
+
+    async function startCamera() {
+      try {
+        if (currentStream) currentStream.getTracks().forEach(t => t.stop());
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        video.srcObject = stream;
+        await video.play();
+        currentStream = stream;
+        resizeOverlay();
+        setStatus('相機啟動成功');
+      } catch(e) {
+        console.error(e);
+        setStatus('相機啟動失敗');
+        alert('相機啟動失敗');
+      }
+    }
+
+    async function grabVideoFrameBlob() {
+      if (!video.videoWidth) return null;
+      const tmp = document.createElement('canvas');
+      tmp.width = video.videoWidth; tmp.height = video.videoHeight;
+      tmp.getContext('2d').drawImage(video, 0, 0, tmp.width, tmp.height);
+      return await new Promise(res => tmp.toBlob(res, 'image/jpeg', toJpegQuality));
+    }
+
+    async function captureAndSend() {
+      if (!video.videoWidth) return;
+      setStatus('擷取畫面中…');
+      try {
+        const blob = await grabVideoFrameBlob();
+        if (!blob) return;
+        setStatus('上傳辨識中…');
+        const user = firebase.auth().currentUser;
+        const token = await user.getIdToken();
+        const fd = new FormData();
+        fd.append('file', blob, 'shot.jpg');
+        const r = await fetch('http://127.0.0.1:8000/predict', { 
+          method:'POST', 
+          body: fd,
+          headers: { "Authorization": "Bearer " + token }
+        });
+        const data = await r.json();
+        setStatus('完成');
+        console.log(data);
+      } catch(e){
+        console.error(e);
+        setStatus('辨識失敗');
+      }
+    }
+
+    btnStart.addEventListener('click', startCamera);
+    btnShot.addEventListener('click', captureAndSend);
+
+  });
+  </script>
+</body>
+</html>
