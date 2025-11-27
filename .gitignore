@@ -63,4 +63,4 @@ __pycache__/
 
 *venv311/
 
-.env
+firebase-admin.json

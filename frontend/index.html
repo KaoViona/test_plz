@@ -127,8 +127,17 @@
     }
 
     // ===================== Firebase 初始化 =====================
-    
-   
+    const firebaseConfig = {
+      apiKey: "AIzaSyDuyFKEHdTz4i57A9NuYycAHIefwzvSBSY",
+      authDomain: "catfaceid.firebaseapp.com",
+      projectId: "catfaceid",
+      storageBucket: "catfaceid.firebasestorage.app",
+      messagingSenderId: "908372181412",
+      appId: "1:908372181412:web:111267cf71a6372e940131",
+      measurementId: "G-YJQ34QJP70"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
 
     const loginModal = document.getElementById('loginModal');
     const loginMsg = document.getElementById('loginMsg');
