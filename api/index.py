@@ -28,11 +28,18 @@ if not os.path.exists("frontend"):
     os.makedirs("frontend")
 app.mount("/static", StaticFiles(directory="frontend"), name="static")
 
-# ===================== Firebase Admin 初始化 =====================
-cred_path = os.path.join(os.path.dirname(__file__), "firebase-admin.json")
+
+# ===================== Firebase Admin 初始化 (使用環境變數) =====================
+import json
+
+firebase_cred_json = os.getenv("FIREBASE_CRED_JSON")
 if not firebase_admin._apps:
-    cred = credentials.Certificate(cred_path)
+    if not firebase_cred_json:
+        raise RuntimeError("FIREBASE_CRED_JSON environment variable not set")
+    cred_dict = json.loads(firebase_cred_json)
+    cred = credentials.Certificate(cred_dict)
     firebase_admin.initialize_app(cred)
+
 
 # ===================== 載入模型 & 資料庫 =====================
 knn, id2name = load_model()
