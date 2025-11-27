@@ -9,3 +9,4 @@ joblib
 opencv-python-headless
 sqlalchemy
 greenlet
+firebase-admin
